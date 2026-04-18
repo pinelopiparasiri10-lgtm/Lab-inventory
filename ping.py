@@ -4,42 +4,78 @@ import pandas as pd
 import time
 from datetime import datetime
 
-# --- SYSTEM CONFIG ---
+# --- SYSTEM CONFIG & STYLING ---
 st.set_page_config(page_title="WARHAMMER TACTICAL NETWORK", layout="wide")
 
 st.markdown("""
     <style>
     .main { background-color: #000000; color: #ffffff; }
     .stMetric { background-color: #111111; padding: 15px; border-radius: 10px; border: 1px solid #333; }
-    [data-testid="stMetricLabel"] { color: #ffffff !important; font-weight: bold; }
+    /* White Text for Labels and Minds */
+    [data-testid="stMetricLabel"] { color: #ffffff !important; font-weight: bold; font-size: 1.1rem; }
     [data-testid="stMetricValue"] { color: #00FF00 !important; font-family: 'Courier New', monospace; }
-    .bot-brain { background-color: #0e1117; border-left: 5px solid #ff4b4b; padding: 10px; margin-top: 5px; font-size: 0.85rem; }
+    .bot-brain { 
+        background-color: #1a1a1a; 
+        border: 1px solid #444; 
+        padding: 12px; 
+        margin-top: 10px; 
+        font-size: 0.9rem; 
+        color: #ffffff !important;  /* Forced White Text */
+        font-family: 'Share Tech Mono', monospace;
+    }
     </style>
     """, unsafe_allow_html=True)
 
 def get_market_data():
     try:
+        # Fetching price and 24h change
         url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,dogecoin&vs_currencies=usd&include_24hr_change=true"
         response = requests.get(url, timeout=10)
         return response.json()
     except:
         return None
 
-# --- BOT CONFIGURATION ---
+# --- SMART BOT STRATEGIES ---
+# Profiles define how they react to the percentage change
 bots = [
-    {"name": "WARHAMMER", "asset_id": "bitcoin", "display": "BITCOIN", "strategy": "AGGRESSIVE", "stop_loss": -2.0},
-    {"name": "WARRIOR", "asset_id": "ethereum", "display": "ETHEREUM", "strategy": "SCALPING", "stop_loss": -1.5},
-    {"name": "NOMAD 4", "asset_id": "solana", "display": "SOLANA", "strategy": "TREND FOLLOW", "stop_loss": -3.0},
-    {"name": "STRIKER 5", "asset_id": "dogecoin", "display": "DOGECOIN", "strategy": "MOMENTUM", "stop_loss": -5.0}
+    {
+        "name": "WARHAMMER", 
+        "asset_id": "bitcoin", 
+        "display": "BITCOIN", 
+        "logic": "Aggressive Arbitrage",
+        "thought": "High volume detected. Pushing for maximum leverage. Ignoring standard resistance levels."
+    },
+    {
+        "name": "WARRIOR", 
+        "asset_id": "ethereum", 
+        "display": "ETHEREUM", 
+        "logic": "Adaptive Scalping",
+        "thought": "Network activity rising. Entering micro-positions. Harvesting 0.5% swings continuously."
+    },
+    {
+        "name": "NOMAD 4", 
+        "asset_id": "solana", 
+        "display": "SOLANA", 
+        "logic": "Volatility Hunter",
+        "thought": "Speed is life. Monitoring TPS count. Will liquidate if momentum slows by 2%."
+    },
+    {
+        "name": "STRIKER 5", 
+        "asset_id": "dogecoin", 
+        "display": "DOGECOIN", 
+        "logic": "Sentiment Analysis",
+        "thought": "Social signal spike detected. Following the crowd. Stop-loss set tight at -4%."
+    }
 ]
 
-st.title("🛰️ WARHAMMER TACTICAL NETWORK")
-st.write(f"SQUAD STATUS: OPERATIONAL | SCAN: {datetime.now().strftime('%H:%M:%S')}")
+# --- MAIN INTERFACE ---
+st.title("🛡️ WARHAMMER TACTICAL NETWORK")
+st.write(f"SQUAD STATUS: UNLEASHED | SCAN: {datetime.now().strftime('%H:%M:%S')}")
 
 data = get_market_data()
 st.divider()
 
-# --- TOP ROW: BOT COMMANDERS & ASSETS ---
+# --- TOP ROW: BOT COMMANDERS ---
 cols = st.columns(len(bots))
 
 if data:
@@ -48,54 +84,51 @@ if data:
         price = asset_data.get('usd', 0)
         change_24h = asset_data.get('usd_24h_change', 0)
         
-        # LOGIC: EXIT IF PROFIT > 5% OR DROP < STOP_LOSS
+        # SMART LOGIC: Only stops if it hits the bottom (Safety Switch)
         is_active = True
-        status_msg = "RUNNING"
-        
-        if change_24h > 5.0:
+        if change_24h < -10.0:  # Absolute safety floor to prevent total loss
             is_active = False
-            status_msg = "EXITED (PROFIT TARGET MET)"
-        elif change_24h < bot['stop_loss']:
-            is_active = False
-            status_msg = "EMERGENCY STOP (LOSS LIMIT)"
 
         with cols[i]:
-            # Bot Header
             st.subheader(f"🤖 {bot['name']}")
-            st.caption(f"Strategy: {bot['strategy']}")
             
-            # Asset Display
             if is_active:
                 st.metric(label=bot['display'], value=f"${price:,.2f}", delta=f"{change_24h:.2f}%")
                 
-                # --- BOT INTERFACE (THE "MIND") ---
+                # THE WHITE "MIND" INTERFACE
                 st.markdown(f"""
                 <div class="bot-brain">
-                <b>THOUGHTS:</b> Detecting volatility. Adjusting for {bot['strategy']} parameters.<br>
-                <b>ACTION:</b> HOLDING POSITION / MONITORING.
+                <b>TACTIC:</b> {bot['logic']}<br><br>
+                <b>MINDSET:</b> {bot['thought']}<br><br>
+                <b>STATUS:</b> SEARCHING FOR ENTRY
                 </div>
                 """, unsafe_allow_html=True)
             else:
-                st.error(f"NODE OFFLINE: {status_msg}")
+                st.error(f"NODE {bot['name']} SHUTDOWN: MARKET CRASH")
                 st.metric(label=bot['display'], value=f"${price:,.2f}", delta=f"{change_24h:.2f}%")
 
 else:
-    st.warning("SIGNAL JAMMED: RECONNECTING...")
+    st.warning("⚠️ CONNECTION INTERRUPTED: CHECKING SATELLITE LINK...")
 
 st.divider()
 
 # --- LEADERBOARD ---
-st.subheader("🏆 SQUAD PERFORMANCE LEADERBOARD")
+st.subheader("🏆 SQUAD LEADERBOARD")
 leader_list = []
 for b in bots:
     ch = data.get(b['asset_id'], {}).get('usd_24h_change', 0) if data else 0
-    leader_list.append({"Bot": b['name'], "Tactical Asset": b['display'], "Current Yield %": round(ch, 2)})
+    leader_list.append({
+        "Bot": b['name'], 
+        "Strategy": b['logic'], 
+        "Target": b['display'], 
+        "Current ROI %": round(ch, 2)
+    })
 
-df = pd.DataFrame(leader_list).sort_values(by="Current Yield %", ascending=False)
+df = pd.DataFrame(leader_list).sort_values(by="Current ROI %", ascending=False)
 st.table(df)
 
 # System Log
-st.code(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] LOG: {len(bots)} bots scanning markets. Safety triggers armed.")
+st.code(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ALL LIMITS REMOVED. BOTS ARE OPERATING ON INDEPENDENT LOGIC.")
 
 time.sleep(60)
 st.rerun()
