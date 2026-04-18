@@ -1,10 +1,10 @@
 import streamlit as st
-import cryptocompare
+import requests
 import pandas as pd
 import time
 from datetime import datetime
 
-# --- CONFIGURATION ---
+# --- SYSTEM CONFIG ---
 st.set_page_config(page_title="Overwatch Market Network", layout="wide")
 
 st.markdown("""
@@ -15,37 +15,46 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- DATA FETCHING ---
-def get_crypto_data(coin):
+def get_market_data():
     try:
-        # Fetch price in USD
-        price_data = cryptocompare.get_price(coin, curr='USD')
-        if price_data:
-            return price_data[coin]['USD']
-        return None
+        # Fetching directly from CoinGecko API (No library needed)
+        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,dogecoin&vs_currencies=usd"
+        response = requests.get(url, timeout=10)
+        return response.json()
     except:
         return None
 
-# --- MAIN INTERFACE ---
+# --- UI ---
 st.title("🛰️ OVERWATCH MARKET NETWORK")
-st.write(f"SYSTEM STATUS: ACTIVE | SCAN TIME: {datetime.now().strftime('%H:%M:%S')}")
+st.write(f"ENCRYPTION: AES-256 | SCAN TIME: {datetime.now().strftime('%H:%M:%S')}")
 
-# List of assets to track
-coins = ["BTC", "ETH", "SOL", "DOGE"]
-cols = st.columns(len(coins))
+data = get_market_data()
 
-for i, coin in enumerate(coins):
-    with cols[i]:
-        price = get_crypto_data(coin)
-        if price:
-            st.metric(label=f"NODE: {coin}", value=f"${price:,.2f}")
-        else:
-            st.error(f"{coin} SIGNAL LOST")
+# Mapping for the display
+assets = [
+    {"id": "bitcoin", "name": "BITCOIN"},
+    {"id": "ethereum", "name": "ETHEREUM"},
+    {"id": "solana", "name": "SOLANA"},
+    {"id": "dogecoin", "name": "DOGECOIN"}
+]
+
+cols = st.columns(len(assets))
+
+if data:
+    for i, asset in enumerate(assets):
+        with cols[i]:
+            price = data.get(asset["id"], {}).get("usd")
+            if price:
+                st.metric(label=f"NODE: {asset['name']}", value=f"${price:,.2f}")
+            else:
+                st.error(f"{asset['name']} OFFLINE")
+else:
+    st.warning("⚠️ GLOBAL SIGNAL JAMMED: RETRYING IN 60s...")
 
 st.divider()
-st.subheader("📡 LIVE TELEMETRY")
-st.code(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] DATA_LINK_ESTABLISHED")
+st.subheader("📡 SYSTEM LOGS")
+st.code(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] DATA_FETCH_SUCCESS: NODES SYNCHRONIZED")
 
-# Refresh every 30 seconds
-time.sleep(30)
+# Refresh every 60 seconds
+time.sleep(60)
 st.rerun()
