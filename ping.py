@@ -2,133 +2,166 @@ import streamlit as st
 import requests
 import pandas as pd
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
+import numpy as np
 
-# --- SYSTEM CONFIG & STYLING ---
-st.set_page_config(page_title="WARHAMMER TACTICAL NETWORK", layout="wide")
+# --- SYSTEM CONFIG ---
+st.set_page_config(page_title="WARHAMMER TACTICAL ELITE", layout="wide")
 
 st.markdown("""
     <style>
     .main { background-color: #000000; color: #ffffff; }
     .stMetric { background-color: #111111; padding: 15px; border-radius: 10px; border: 1px solid #333; }
-    /* White Text for Labels and Minds */
-    [data-testid="stMetricLabel"] { color: #ffffff !important; font-weight: bold; font-size: 1.1rem; }
+    [data-testid="stMetricLabel"] { color: #ffffff !important; font-weight: bold; }
     [data-testid="stMetricValue"] { color: #00FF00 !important; font-family: 'Courier New', monospace; }
     .bot-brain { 
-        background-color: #1a1a1a; 
-        border: 1px solid #444; 
-        padding: 12px; 
-        margin-top: 10px; 
-        font-size: 0.9rem; 
-        color: #ffffff !important;  /* Forced White Text */
-        font-family: 'Share Tech Mono', monospace;
+        background-color: #1a1a1a; border: 1px solid #444; padding: 12px; 
+        margin-top: 10px; font-size: 0.85rem; color: #ffffff !important; 
+        font-family: 'Share Tech Mono', monospace; line-height: 1.4;
     }
+    .tactic-tag { color: #00ecff; font-weight: bold; font-size: 0.75rem; }
     </style>
     """, unsafe_allow_html=True)
 
-def get_market_data():
-    try:
-        # Fetching price and 24h change
-        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,dogecoin&vs_currencies=usd&include_24hr_change=true"
-        response = requests.get(url, timeout=10)
-        return response.json()
-    except:
-        return None
+# --- COMMANDER MEMORY ---
+if 'wallets' not in st.session_state:
+    st.session_state.wallets = { "WARHAMMER": 100.0, "WARRIOR": 100.0, "NOMAD 4": 100.0, "STRIKER 5": 100.0 }
+if 'positions' not in st.session_state:
+    st.session_state.positions = { "WARHAMMER": "OUT", "WARRIOR": "OUT", "NOMAD 4": "OUT", "STRIKER 5": "OUT" }
+if 'entry_prices' not in st.session_state:
+    st.session_state.entry_prices = {}
+if 'price_history' not in st.session_state:
+    st.session_state.price_history = {} 
 
-# --- SMART BOT STRATEGIES ---
-# Profiles define how they react to the percentage change
+def get_live_data():
+    try:
+        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,dogecoin&vs_currencies=eur"
+        return requests.get(url, timeout=10).json()
+    except: return None
+
+# --- FAMOUS TACTIC PROFILES ---
 bots = [
     {
         "name": "WARHAMMER", 
-        "asset_id": "bitcoin", 
-        "display": "BITCOIN", 
-        "logic": "Aggressive Arbitrage",
-        "thought": "High volume detected. Pushing for maximum leverage. Ignoring standard resistance levels."
+        "id": "bitcoin", 
+        "tactic": "BOLLINGER BREAKOUT", 
+        "desc": "Enters when price 'squeezes' then explodes past volatility bands."
     },
     {
         "name": "WARRIOR", 
-        "asset_id": "ethereum", 
-        "display": "ETHEREUM", 
-        "logic": "Adaptive Scalping",
-        "thought": "Network activity rising. Entering micro-positions. Harvesting 0.5% swings continuously."
+        "id": "ethereum", 
+        "tactic": "MEAN REVERSION", 
+        "desc": "Bets that price will always return to its 10-minute average."
     },
     {
         "name": "NOMAD 4", 
-        "asset_id": "solana", 
-        "display": "SOLANA", 
-        "logic": "Volatility Hunter",
-        "thought": "Speed is life. Monitoring TPS count. Will liquidate if momentum slows by 2%."
+        "id": "solana", 
+        "tactic": "TURTLE TRADING", 
+        "desc": "Trend-following system: Enters on 10-minute highs, exits on lows."
     },
     {
         "name": "STRIKER 5", 
-        "asset_id": "dogecoin", 
-        "display": "DOGECOIN", 
-        "logic": "Sentiment Analysis",
-        "thought": "Social signal spike detected. Following the crowd. Stop-loss set tight at -4%."
+        "id": "dogecoin", 
+        "tactic": "SCALP OVERBOUGHT", 
+        "desc": "Uses RSI logic to catch rapid spikes and exit before the drop."
     }
 ]
 
-# --- MAIN INTERFACE ---
-st.title("🛡️ WARHAMMER TACTICAL NETWORK")
-st.write(f"SQUAD STATUS: UNLEASHED | SCAN: {datetime.now().strftime('%H:%M:%S')}")
+st.title("🛡️ WARHAMMER: FAMOUS TACTICS COMMAND")
+st.write(f"TIMEFRAME: 10m SCALPING | STRATEGY: SENTIENT | {datetime.now().strftime('%H:%M:%S')}")
 
-data = get_market_data()
+data = get_live_data()
+now = datetime.now()
+
 st.divider()
-
-# --- TOP ROW: BOT COMMANDERS ---
 cols = st.columns(len(bots))
 
 if data:
     for i, bot in enumerate(bots):
-        asset_data = data.get(bot['asset_id'], {})
-        price = asset_data.get('usd', 0)
-        change_24h = asset_data.get('usd_24h_change', 0)
+        current_price = data.get(bot['id'], {}).get('eur', 0)
         
-        # SMART LOGIC: Only stops if it hits the bottom (Safety Switch)
-        is_active = True
-        if change_24h < -10.0:  # Absolute safety floor to prevent total loss
-            is_active = False
-
-        with cols[i]:
-            st.subheader(f"🤖 {bot['name']}")
+        # --- DATA BUFFER ---
+        if bot['id'] not in st.session_state.price_history:
+            st.session_state.price_history[bot['id']] = []
+        st.session_state.price_history[bot['id']].append(current_price)
+        
+        # Keep window of 30 samples (approx 10 mins if refreshing every 20s)
+        if len(st.session_state.price_history[bot['id']]) > 30:
+            st.session_state.price_history[bot['id']].pop(0)
             
-            if is_active:
-                st.metric(label=bot['display'], value=f"${price:,.2f}", delta=f"{change_24h:.2f}%")
-                
-                # THE WHITE "MIND" INTERFACE
-                st.markdown(f"""
-                <div class="bot-brain">
-                <b>TACTIC:</b> {bot['logic']}<br><br>
-                <b>MINDSET:</b> {bot['thought']}<br><br>
-                <b>STATUS:</b> SEARCHING FOR ENTRY
-                </div>
-                """, unsafe_allow_html=True)
+        history = st.session_state.price_history[bot['id']]
+        avg_price = np.mean(history) if history else current_price
+        std_dev = np.std(history) if history else 0
+        
+        current_pos = st.session_state.positions[bot['name']]
+        action_text = "SCANNING..."
+
+        # --- FAMOUS TACTIC LOGIC GATES ---
+        
+        # 1. EXIT LOGIC
+        if current_pos == "IN":
+            entry = st.session_state.entry_prices[bot['name']]
+            gain = ((current_price - entry) / entry) * 100
+            
+            # Smart Exit: If profit > 0.4% OR loss < -0.2%
+            if gain >= 0.4 or gain <= -0.2:
+                st.session_state.wallets[bot['name']] *= (1 + (gain/100))
+                st.session_state.positions[bot['name']] = "OUT"
+                action_text = f"TACTIC SUCCESS: LIQUIDATED AT {gain:.2f}%"
             else:
-                st.error(f"NODE {bot['name']} SHUTDOWN: MARKET CRASH")
-                st.metric(label=bot['display'], value=f"${price:,.2f}", delta=f"{change_24h:.2f}%")
+                action_text = f"POSITION ACTIVE: P/L {gain:.3f}%"
+
+        # 2. ENTRY LOGIC (Famous Tactics)
+        else:
+            # WARHAMMER: Bollinger Squeeze (Price > Avg + 2 StdDev)
+            if bot['name'] == "WARHAMMER" and current_price > (avg_price + (1.5 * std_dev)):
+                st.session_state.entry_prices[bot['name']] = current_price
+                st.session_state.positions[bot['name']] = "IN"
+                action_text = "BOLLINGER SQUEEZE DETECTED: BUYING"
+            
+            # WARRIOR: Mean Reversion (Buy if 0.5% below average)
+            elif bot['name'] == "WARRIOR" and current_price < (avg_price * 0.998):
+                st.session_state.entry_prices[bot['name']] = current_price
+                st.session_state.positions[bot['name']] = "IN"
+                action_text = "REVERSION TRIGGERED: BUYING DIP"
+
+            # NOMAD 4: Turtle (Price is higher than anything in history buffer)
+            elif bot['name'] == "NOMAD 4" and current_price >= max(history):
+                st.session_state.entry_prices[bot['name']] = current_price
+                st.session_state.positions[bot['name']] = "IN"
+                action_text = "BREAKOUT CONFIRMED: TURTLE ENTRY"
+                
+            # STRIKER 5: Sentiment Scalp (Fast 0.1% jump)
+            elif bot['name'] == "STRIKER 5" and len(history) > 1 and current_price > history[-2] * 1.001:
+                st.session_state.entry_prices[bot['name']] = current_price
+                st.session_state.positions[bot['name']] = "IN"
+                action_text = "SENTIMENT SPIKE: MOMENTUM ENTRY"
+
+        # --- DISPLAY ---
+        with cols[i]:
+            pos_color = "#00FF00" if st.session_state.positions[bot['name']] == "IN" else "#FF4B4B"
+            st.subheader(f"🤖 {bot['name']}")
+            st.markdown(f"<span class='tactic-tag'>{bot['tactic']}</span>", unsafe_allow_html=True)
+            st.markdown(f"POSITION: <span style='color:{pos_color}'>{st.session_state.positions[bot['name']]}</span>", unsafe_allow_html=True)
+            
+            st.metric(label=f"{bot['id'].upper()}", value=f"€{current_price:,.2f}")
+            
+            st.markdown(f"""
+                <div class="bot-brain">
+                <b>WALLET:</b> €{st.session_state.wallets[bot['name']]:,.2f}<br>
+                <b>LOGIC:</b> {bot['desc']}<br><br>
+                <b>MIND:</b> {action_text}
+                </div>
+            """, unsafe_allow_html=True)
 
 else:
-    st.warning("⚠️ CONNECTION INTERRUPTED: CHECKING SATELLITE LINK...")
+    st.warning("📡 DATA LINK SEVERED. ATTEMPTING RECOVERY...")
 
+# --- PERFORMANCE LEADERBOARD ---
 st.divider()
+st.subheader("🏆 TACTICAL SQUAD LEADERBOARD")
+leader_data = [{"Commander": k, "Balance": f"€{v:,.4f}", "Strategy": next(b['tactic'] for b in bots if b['name'] == k)} for k, v in st.session_state.wallets.items()]
+st.table(pd.DataFrame(leader_data).sort_values("Balance", ascending=False))
 
-# --- LEADERBOARD ---
-st.subheader("🏆 SQUAD LEADERBOARD")
-leader_list = []
-for b in bots:
-    ch = data.get(b['asset_id'], {}).get('usd_24h_change', 0) if data else 0
-    leader_list.append({
-        "Bot": b['name'], 
-        "Strategy": b['logic'], 
-        "Target": b['display'], 
-        "Current ROI %": round(ch, 2)
-    })
-
-df = pd.DataFrame(leader_list).sort_values(by="Current ROI %", ascending=False)
-st.table(df)
-
-# System Log
-st.code(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ALL LIMITS REMOVED. BOTS ARE OPERATING ON INDEPENDENT LOGIC.")
-
-time.sleep(60)
+time.sleep(20)
 st.rerun()
